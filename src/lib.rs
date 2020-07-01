@@ -1,3 +1,4 @@
+mod as_value;
 mod constant;
 pub mod de;
 mod error;

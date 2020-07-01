@@ -1,7 +1,8 @@
-use serde::ser;
 use std::result;
 use std::string::FromUtf8Error;
-use std::{error, fmt, io};
+use std::{fmt, io};
+
+use super::as_value::Error as AsValueError;
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum ErrorKind {
@@ -29,6 +30,7 @@ pub enum Error {
     SyntaxError(ErrorKind),
     IoError(io::Error),
     FromUtf8Error(FromUtf8Error),
+    ConvertError(AsValueError),
 }
 
 impl fmt::Display for Error {
@@ -37,6 +39,7 @@ impl fmt::Display for Error {
             Error::SyntaxError(err) => write!(f, "syntax error: {}", err),
             Error::IoError(err) => err.fmt(f),
             Error::FromUtf8Error(err) => err.fmt(f),
+            Error::ConvertError(err) => err.fmt(f),
         }
     }
 }
@@ -53,12 +56,10 @@ impl From<FromUtf8Error> for Error {
     }
 }
 
-pub type Result<T> = result::Result<T, Error>;
-
-impl ser::Error for Error {
-    fn custom<T: fmt::Display>(msg: T) -> Error {
-        Error::SyntaxError(crate::ErrorKind::UnexpectedType(msg.to_string()))
+impl From<AsValueError> for Error {
+    fn from(error: AsValueError) -> Self {
+        Error::ConvertError(error)
     }
 }
 
-impl error::Error for Error {}
+pub type Result<T> = result::Result<T, Error>;

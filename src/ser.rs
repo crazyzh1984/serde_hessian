@@ -4,6 +4,7 @@ use byteorder::{BigEndian, WriteBytesExt};
 use indexmap::{IndexMap, IndexSet};
 use serde::{ser, Serialize};
 
+use super::as_value::to_value;
 use super::error::{Error, Result};
 use super::value::{self, Definition, Value};
 
@@ -331,352 +332,20 @@ impl<W: io::Write> Serializer<W> {
     }
 }
 
-impl<'a, W: io::Write> ser::SerializeSeq for &'a mut Serializer<W> {
-    type Ok = ();
-    type Error = Error;
-
-    #[inline]
-    fn serialize_element<T: Serialize + ?Sized>(&mut self, value: &T) -> Result<()> {
-        value.serialize(&mut **self)?;
-        Ok(())
-    }
-
-    #[inline]
-    fn end(self) -> Result<()> {
-        Ok(())
-    }
-}
-
-impl<'a, W: io::Write> ser::SerializeTuple for &'a mut Serializer<W> {
-    type Ok = ();
-    type Error = Error;
-
-    #[inline]
-    fn serialize_element<T: Serialize + ?Sized>(&mut self, value: &T) -> Result<()> {
-        value.serialize(&mut **self)
-    }
-
-    #[inline]
-    fn end(self) -> Result<()> {
-        Ok(())
-    }
-}
-
-impl<'a, W: io::Write> ser::SerializeTupleStruct for &'a mut Serializer<W> {
-    type Ok = ();
-    type Error = Error;
-
-    #[inline]
-    fn serialize_field<T: Serialize + ?Sized>(&mut self, value: &T) -> Result<()> {
-        ser::SerializeTuple::serialize_element(self, value)
-    }
-
-    #[inline]
-    fn end(self) -> Result<()> {
-        Ok(())
-    }
-}
-
-impl<'a, W: io::Write> ser::SerializeTupleVariant for &'a mut Serializer<W> {
-    type Ok = ();
-    type Error = Error;
-
-    #[inline]
-    fn serialize_field<T: Serialize + ?Sized>(&mut self, value: &T) -> Result<()> {
-        ser::SerializeTuple::serialize_element(self, value)
-    }
-
-    #[inline]
-    fn end(self) -> Result<()> {
-        Ok(())
-    }
-}
-
-impl<'a, W: io::Write> ser::SerializeMap for &'a mut Serializer<W> {
-    type Ok = ();
-    type Error = Error;
-
-    #[inline]
-    fn serialize_key<T: Serialize + ?Sized>(&mut self, key: &T) -> Result<()> {
-        key.serialize(&mut **self)
-    }
-
-    #[inline]
-    fn serialize_value<T: Serialize + ?Sized>(&mut self, value: &T) -> Result<()> {
-        value.serialize(&mut **self)
-    }
-
-    #[inline]
-    fn end(self) -> Result<()> {
-        self.writer.write_u8(b'Z')?;
-        Ok(())
-    }
-}
-
-impl<'a, W: io::Write> ser::SerializeStruct for &'a mut Serializer<W> {
-    type Ok = ();
-    type Error = Error;
-
-    fn serialize_field<T: Serialize + ?Sized>(
-        &mut self,
-        key: &'static str,
-        value: &T,
-    ) -> Result<()> {
-        ser::SerializeMap::serialize_key(self, key)?;
-        ser::SerializeMap::serialize_value(self, value)
-    }
-
-    #[inline]
-    fn end(self) -> Result<()> {
-        self.writer.write_u8(b'Z')?;
-        Ok(())
-    }
-}
-
-impl<'a, W: io::Write> ser::SerializeStructVariant for &'a mut Serializer<W> {
-    type Ok = ();
-    type Error = Error;
-
-    #[inline]
-    fn serialize_field<T: Serialize + ?Sized>(
-        &mut self,
-        key: &'static str,
-        value: &T,
-    ) -> Result<()> {
-        ser::SerializeMap::serialize_key(self, key)?;
-        ser::SerializeMap::serialize_value(self, value)
-    }
-
-    #[inline]
-    fn end(self) -> Result<()> {
-        self.writer.write_u8(b'Z')?;
-        Ok(())
-    }
-}
-
-impl<'a, W: io::Write> ser::Serializer for &'a mut Serializer<W> {
-    type Ok = ();
-    type Error = Error;
-
-    type SerializeSeq = Self;
-    type SerializeTuple = Self::SerializeSeq;
-    type SerializeTupleStruct = Self::SerializeTuple;
-    type SerializeTupleVariant = Self::SerializeTuple;
-    type SerializeMap = Self;
-    type SerializeStruct = Self::SerializeMap;
-    type SerializeStructVariant = Self::SerializeStruct;
-
-    #[inline]
-    fn serialize_bool(self, value: bool) -> Result<()> {
-        self.serialize_bool(value)
-    }
-
-    #[inline]
-    fn serialize_i8(self, value: i8) -> Result<()> {
-        self.serialize_int(value as i32)
-    }
-
-    #[inline]
-    fn serialize_i16(self, value: i16) -> Result<()> {
-        self.serialize_int(value as i32)
-    }
-
-    #[inline]
-    fn serialize_i32(self, value: i32) -> Result<()> {
-        self.serialize_int(value)
-    }
-
-    #[inline]
-    fn serialize_i64(self, value: i64) -> Result<()> {
-        self.serialize_long(value)
-    }
-
-    #[inline]
-    fn serialize_u8(self, value: u8) -> Result<()> {
-        self.serialize_int(value as i32)
-    }
-
-    #[inline]
-    fn serialize_u16(self, value: u16) -> Result<()> {
-        self.serialize_int(value as i32)
-    }
-
-    #[inline]
-    fn serialize_u32(self, value: u32) -> Result<()> {
-        if value < i32::max_value() as u32 {
-            self.serialize_int(value as i32)
-        } else {
-            self.serialize_long(value as i64)
-        }
-    }
-
-    #[inline]
-    fn serialize_u64(self, value: u64) -> Result<()> {
-        self.serialize_long(value as i64)
-    }
-
-    #[inline]
-    fn serialize_f32(self, value: f32) -> Result<()> {
-        self.serialize_double(value as f64)
-    }
-
-    #[inline]
-    fn serialize_f64(self, value: f64) -> Result<()> {
-        self.serialize_double(value as f64)
-    }
-
-    #[inline]
-    fn serialize_char(self, value: char) -> Result<()> {
-        let mut buf = [0; 4];
-        self.serialize_string(value.encode_utf8(&mut buf))
-    }
-
-    #[inline]
-    fn serialize_str(self, value: &str) -> Result<()> {
-        self.serialize_string(value)
-    }
-
-    #[inline]
-    fn serialize_bytes(self, value: &[u8]) -> Result<()> {
-        self.serialize_binary(value)
-    }
-
-    #[inline]
-    fn serialize_unit(self) -> Result<()> {
-        self.serialize_null()
-    }
-
-    #[inline]
-    fn serialize_unit_struct(self, _name: &'static str) -> Result<()> {
-        self.serialize_null()
-    }
-
-    #[inline]
-    fn serialize_unit_variant(
-        self,
-        _name: &'static str,
-        _variant_index: u32,
-        variant: &'static str,
-    ) -> Result<()> {
-        self.serialize_str(variant)
-    }
-
-    #[inline]
-    fn serialize_newtype_struct<T: Serialize + ?Sized>(
-        self,
-        _name: &'static str,
-        value: &T,
-    ) -> Result<()> {
-        value.serialize(self)
-    }
-
-    #[inline]
-    fn serialize_newtype_variant<T: Serialize + ?Sized>(
-        self,
-        _name: &'static str,
-        _variant_index: u32,
-        _variant: &'static str,
-        value: &T,
-    ) -> Result<()> {
-        value.serialize(self)
-    }
-
-    #[inline]
-    fn serialize_none(self) -> Result<()> {
-        self.serialize_unit()
-    }
-
-    #[inline]
-    fn serialize_some<T: Serialize + ?Sized>(self, value: &T) -> Result<()> {
-        value.serialize(self)
-    }
-
-    #[inline]
-    fn serialize_seq(self, len: Option<usize>) -> Result<Self::SerializeSeq> {
-        match len {
-            Some(len) => {
-                self.write_list_begin(len, None)?;
-                Ok(self)
-            }
-            _ => Ok(self),
-        }
-    }
-
-    #[inline]
-    fn serialize_tuple(self, len: usize) -> Result<Self::SerializeTuple> {
-        self.write_list_begin(len, None)?;
-        Ok(self)
-    }
-
-    #[inline]
-    fn serialize_tuple_struct(
-        self,
-        name: &'static str,
-        len: usize,
-    ) -> Result<Self::SerializeTupleStruct> {
-        self.write_list_begin(len, Some(name))?;
-        Ok(self)
-    }
-
-    #[inline]
-    fn serialize_tuple_variant(
-        self,
-        _name: &'static str,
-        _variant_index: u32,
-        variant: &'static str,
-        len: usize,
-    ) -> Result<Self::SerializeTupleVariant> {
-        self.write_list_begin(len, Some(variant))?;
-        Ok(self)
-    }
-
-    #[inline]
-    fn serialize_map(self, _len: Option<usize>) -> Result<Self::SerializeMap> {
-        self.write_map_start(None)?;
-        Ok(self)
-    }
-
-    #[inline]
-    fn serialize_struct(self, name: &'static str, _len: usize) -> Result<Self::SerializeStruct> {
-        // TODO: Use definition + object replace map
-        self.write_map_start(Some(name))?;
-        Ok(self)
-    }
-
-    #[inline]
-    fn serialize_struct_variant(
-        self,
-        _name: &'static str,
-        _variant_index: u32,
-        variant: &'static str,
-        _len: usize,
-    ) -> Result<Self::SerializeStructVariant> {
-        self.write_map_start(Some(variant))?;
-        Ok(self)
-    }
-}
-
-/// Serialize a `Value` to bytes
-pub fn to_vec(value: &Value) -> Result<Vec<u8>> {
-    let mut buf = Vec::new();
-    let mut ser = Serializer::new(&mut buf);
-    ser.serialize_value(&value)?;
-    Ok(buf)
-}
-
-pub fn to_bytes<T>(value: &T) -> Result<Vec<u8>>
+pub fn to_vec<T>(value: &T) -> Result<Vec<u8>>
 where
     T: Serialize,
 {
     let mut buf = Vec::new();
     let mut ser = Serializer::new(&mut buf);
-    value.serialize(&mut ser)?;
+    let hessian_value = to_value(value)?;
+    ser.serialize_value(&hessian_value)?;
     Ok(buf)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{to_bytes, to_vec, Serializer};
+    use super::{to_vec, Serializer};
     use crate::value::Value::Int;
     use crate::value::{self, Value};
     use serde::Serialize;
@@ -693,7 +362,7 @@ mod tests {
             int: 1,
             seq: vec!["a", "b"],
         };
-        let output = to_bytes(&test).unwrap();
+        let output = to_vec(&test).unwrap();
         assert_eq!(
             output,
             &[
@@ -714,22 +383,22 @@ mod tests {
 
         let u = E::Unit;
         let expected = b"\x04Unit";
-        assert_eq!(to_bytes(&u).unwrap(), expected);
+        assert_eq!(to_vec(&u).unwrap(), expected);
 
         let n = E::Newtype(1);
-        assert_eq!(to_bytes(&n).unwrap(), &[0x91]);
+        assert_eq!(to_vec(&n).unwrap(), &[0x91]);
 
         // serialize tuple variant, use variant as list name
         let t = E::Tuple(1, 2);
         assert_eq!(
-            to_bytes(&t).unwrap(),
+            to_vec(&t).unwrap(),
             &[0x72, 0x05, b'T', b'u', b'p', b'l', b'e', 0x91, 0x92]
         );
 
         // serialize Variant Struct, use variant naeme as map name
         let s = E::Struct { a: 1 };
         assert_eq!(
-            to_bytes(&s).unwrap(),
+            to_vec(&s).unwrap(),
             &[b'M', 0x06, b'S', b't', b'r', b'u', b'c', b't', 0x01, b'a', 0x91, b'Z']
         );
     }
