@@ -54,6 +54,15 @@ struct StructSerializer<'a> {
     values: Vec<Value>,
 }
 
+struct DateTimeSerializer {
+    field: Option<Value>,
+}
+
+enum SerializerTable<'a> {
+    DateTime(DateTimeSerializer),
+    Struct(StructSerializer<'a>),
+}
+
 impl<'a> ser::SerializeSeq for SeqSerializer<'a> {
     type Ok = Value;
     type Error = Error;
@@ -147,7 +156,7 @@ impl<'a> ser::SerializeMap for MapSerializer {
 }
 
 // TODO: Add struct type for Value
-impl<'a> ser::SerializeStruct for StructSerializer<'a> {
+impl<'a> ser::SerializeStruct for SerializerTable<'a> {
     type Ok = Value;
     type Error = Error;
 
@@ -156,23 +165,44 @@ impl<'a> ser::SerializeStruct for StructSerializer<'a> {
         key: &'static str,
         value: &T,
     ) -> Result<(), Self::Error> {
-        self.fields.push(key.into());
-        self.values
-            .push(value.serialize(&mut Serializer::default())?);
-        Ok(())
+        match self {
+            SerializerTable::DateTime(d) => {
+                if key == "value" {
+                    d.field = Some(value.serialize(&mut Serializer::default())?);
+                }
+                Ok(())
+            }
+            SerializerTable::Struct(ser) => {
+                ser.fields.push(key.into());
+                ser.values
+                    .push(value.serialize(&mut Serializer::default())?);
+                Ok(())
+            }
+        }
     }
 
     #[inline]
     fn end(self) -> Result<Value, Self::Error> {
-        let mut map = HashMap::new();
-        for (k, v) in self.fields.iter().zip(self.values.iter()) {
-            map.insert(k.to_hessian(), v.clone());
+        match self {
+            SerializerTable::DateTime(d) => match d.field {
+                Some(Value::Long(i)) => Ok(Value::Date(i)),
+                Some(v) => Err(Error {
+                    message: format!("Can't convert {} to date", v).into(),
+                }),
+                None => Ok(Value::Null),
+            },
+            SerializerTable::Struct(ser) => {
+                let mut map = HashMap::new();
+                for (k, v) in ser.fields.iter().zip(ser.values.iter()) {
+                    map.insert(k.to_hessian(), v.clone());
+                }
+                Ok(Value::Map(value::Map::from((ser.name, map))))
+            }
         }
-        Ok(Value::Map(value::Map::from((self.name, map))))
     }
 }
 
-impl<'a> ser::SerializeStructVariant for StructSerializer<'a> {
+impl<'a> ser::SerializeStructVariant for SerializerTable<'a> {
     type Ok = Value;
     type Error = Error;
 
@@ -200,7 +230,7 @@ impl<'a> ser::Serializer for &'a mut Serializer {
     type SerializeTupleStruct = Self::SerializeTuple;
     type SerializeTupleVariant = Self::SerializeTuple;
     type SerializeMap = MapSerializer;
-    type SerializeStruct = StructSerializer<'a>;
+    type SerializeStruct = SerializerTable<'a>;
     type SerializeStructVariant = Self::SerializeStruct;
 
     #[inline]
@@ -396,11 +426,16 @@ impl<'a> ser::Serializer for &'a mut Serializer {
         name: &'static str,
         len: usize,
     ) -> Result<Self::SerializeStruct, Self::Error> {
-        Ok(StructSerializer {
-            name,
-            fields: Vec::with_capacity(len),
-            values: Vec::with_capacity(len),
-        })
+        match name {
+            "java.time.time" => Ok(SerializerTable::DateTime(DateTimeSerializer {
+                field: None,
+            })),
+            _ => Ok(SerializerTable::Struct(StructSerializer {
+                name,
+                fields: Vec::with_capacity(len),
+                values: Vec::with_capacity(len),
+            })),
+        }
     }
 
     #[inline]
@@ -411,50 +446,7 @@ impl<'a> ser::Serializer for &'a mut Serializer {
         variant: &'static str,
         len: usize,
     ) -> Result<Self::SerializeStructVariant, Self::Error> {
-        Ok(StructSerializer {
-            name: variant,
-            fields: Vec::with_capacity(len),
-            values: Vec::with_capacity(len),
-        })
-    }
-}
-
-impl serde::Serialize for Value {
-    #[inline]
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where S: serde::Serializer {
-        match *self {
-            Value::Null => serializer.serialize_unit(),
-            Value::Bool(b) => serializer.serialize_bool(b),
-            Value::Int(i) => serializer.serialize_i32(i),
-            Value::Long(l) => serializer.serialize_i64(l),
-            Value::Double(d) => serializer.serialize_f64(d),
-            Value::Date(d) => serializer.serialize_i64(d),
-            Value::Bytes(ref bytes) => serializer.serialize_bytes(bytes),
-            Value::String(ref s) => serializer.serialize_str(s),
-            Value::Ref(i) => serializer.serialize_i32(i as i32),
-            Value::List(ref l) => {
-                match *l {
-                    value::List::Typed(name, v) => {
-                    let ser = serializer.serialize_seq(Some(v.len()))?;
-                    for e in v {
-                        ser.serialize_element(e)?;
-                    }
-                    seq.end()
-                    }
-                    value::List::Untyped(v) => {
-                    let ser = serializer.serialize_seq(Some(v.len()))?;
-                    for e in v {
-                        ser.serialize_element(e)?;
-                    }
-                    seq.end()
-                    }
-                }
-            }
-            Value::Map(ref m) => {
-                Error("test".into())
-            }
-        }
+        serde::Serializer::serialize_struct(self, variant, len)
     }
 }
 

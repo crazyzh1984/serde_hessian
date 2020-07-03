@@ -2,10 +2,10 @@ use std::io;
 
 use byteorder::{BigEndian, WriteBytesExt};
 use indexmap::{IndexMap, IndexSet};
-use serde::{ser, Serialize};
+use serde::Serialize;
 
 use super::as_value::to_value;
-use super::error::{Error, Result};
+use super::error::Result;
 use super::value::{self, Definition, Value};
 
 pub struct Serializer<W> {
@@ -332,20 +332,24 @@ impl<W: io::Write> Serializer<W> {
     }
 }
 
+pub fn value_to_vec(value: &Value) -> Result<Vec<u8>> {
+    let mut buf = Vec::new();
+    let mut ser = Serializer::new(&mut buf);
+    ser.serialize_value(&value)?;
+    Ok(buf)
+}
+
 pub fn to_vec<T>(value: &T) -> Result<Vec<u8>>
 where
     T: Serialize,
 {
-    let mut buf = Vec::new();
-    let mut ser = Serializer::new(&mut buf);
-    let hessian_value = to_value(value)?;
-    ser.serialize_value(&hessian_value)?;
-    Ok(buf)
+    value_to_vec(&to_value(value)?)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{to_vec, Serializer};
+    use super::{to_value, to_vec, value_to_vec, Serializer};
+    use crate::de::from_slice;
     use crate::value::Value::Int;
     use crate::value::{self, Value};
     use serde::Serialize;
@@ -363,14 +367,18 @@ mod tests {
             seq: vec!["a", "b"],
         };
         let output = to_vec(&test).unwrap();
-        assert_eq!(
-            output,
-            &[
-                b'M', 0x04, b'T', b'e', b's', b't', 0x03, b'i', b'n', b't', 0x91, 0x03, b's', b'e',
-                b'q', 0x7a, 0x01, b'a', 0x01, b'b', b'Z'
-            ]
-        )
+        assert_eq!(from_slice(&output).unwrap(), to_value(test).unwrap());
+
+        // check datetime spefication
+        #[derive(Serialize)]
+        #[serde(rename = "java.time.time")]
+        struct Time {
+            value: i64,
+        }
+        let time = Time { value: 1992 };
+        assert_eq!(to_value(time).unwrap(), Value::Date(1992));
     }
+
     #[test]
     fn test_enum() {
         #[derive(Serialize)]
@@ -404,7 +412,12 @@ mod tests {
     }
 
     fn test_encode_ok(value: Value, target: &[u8]) {
-        assert_eq!(to_vec(&value).unwrap(), target, "{:?} encode error", value);
+        assert_eq!(
+            value_to_vec(&value).unwrap(),
+            target,
+            "{:?} encode error",
+            value
+        );
     }
 
     #[test]
