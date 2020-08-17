@@ -427,7 +427,7 @@ impl<'a> ser::Serializer for &'a mut Serializer {
         len: usize,
     ) -> Result<Self::SerializeStruct, Self::Error> {
         match name {
-            "java.time.time" => Ok(SerializerTable::DateTime(DateTimeSerializer {
+            "java.util.Date" => Ok(SerializerTable::DateTime(DateTimeSerializer {
                 field: None,
             })),
             _ => Ok(SerializerTable::Struct(StructSerializer {
